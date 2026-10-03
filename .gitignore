@@ -1,0 +1,29 @@
+# Executables
+*.exe
+*.out
+
+# Object files
+*.o
+*.obj
+
+# Results (generated at runtime)
+results/*.csv
+results/*.txt
+results/received_*
+
+# Wireshark captures
+wireshark/*.pcap
+wireshark/*.pcapng
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vs/
+
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store
