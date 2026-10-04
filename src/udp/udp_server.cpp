@@ -269,8 +269,8 @@ int main() {
     std::cout << "  Out-of-order     : " << outOfOrderCount << "\n";
     std::cout << "  Transfer time    : " << std::setprecision(4)
               << transferTimeSec << " sec\n";
-    std::cout << "  Avg latency      : " << std::setprecision(4)
-              << avgLatency << " ms (localhost clock-based)\n";
+    std::cout << "  Avg App Latency  : " << std::setprecision(4)
+              << avgLatency << " ms (observed application-level packet latency)\n";
     std::cout << "  Jitter           : " << std::setprecision(4)
               << jitter << " ms\n";
 

@@ -65,7 +65,8 @@ double calculateJitter(const std::vector<double>& latencies) {
 // ============================================================
 
 void displayResult(const ExperimentResult& result) {
-    std::string protoStr = (result.protocol == Protocol::TCP) ? "TCP" : "UDP";
+    bool isTcp = (result.protocol == Protocol::TCP);
+    std::string protoStr = isTcp ? "TCP" : "UDP";
     std::string modeStr  = (result.mode == TransferMode::SYNTHETIC) ? "Synthetic Data" : "File Transfer";
 
     std::cout << "\n";
@@ -81,21 +82,22 @@ void displayResult(const ExperimentResult& result) {
     std::cout << "  Data Size         : " << result.totalBytes << " bytes ("
               << std::setprecision(2)
               << (static_cast<double>(result.totalBytes) / (1024.0 * 1024.0)) << " MB)\n";
-    std::cout << "  Chunk/Packet Size : " << result.chunkSize << " bytes\n";
-    std::cout << "  Packets Sent      : " << result.packetsSent << "\n";
-    std::cout << "  Packets Received  : " << result.packetsReceived << "\n";
-    std::cout << "  Packets Lost      : " << result.packetsLost << "\n";
+    std::cout << (isTcp ? "  Logical Chunk Size: " : "  Datagram Size     : ") << result.chunkSize << " bytes\n";
+    std::cout << (isTcp ? "  Chunks Sent (App) : " : "  Packets Sent      : ") << result.packetsSent << "\n";
+    std::cout << (isTcp ? "  Chunks Received   : " : "  Packets Received  : ") << result.packetsReceived << "\n";
+    std::cout << (isTcp ? "  Chunks Lost       : " : "  Packets Lost      : ") << result.packetsLost << "\n";
     std::cout << std::setprecision(2);
-    std::cout << "  Packet Loss       : " << result.packetLossPercent << " %\n";
+    std::cout << (isTcp ? "  Chunk Loss Rate   : " : "  Packet Loss Rate  : ") << result.packetLossPercent << " %\n";
     std::cout << std::setprecision(4);
     std::cout << "  Transmission Time : " << result.transmissionTimeSec << " sec\n";
     std::cout << std::setprecision(2);
     std::cout << "  Throughput        : " << result.throughputMBps << " MB/s ("
               << result.throughputMbps << " Mbps)\n";
     std::cout << std::setprecision(4);
-    std::cout << "  Average Latency   : " << result.averageLatencyMs << " ms\n";
+    std::cout << "  Avg App Latency   : " << result.averageLatencyMs << " ms ("
+              << (isTcp ? "inter-chunk arrival timing" : "sender-receiver timestamp estimate") << ")\n";
     std::cout << "  Jitter            : " << result.jitterMs << " ms\n";
-    if (result.protocol == Protocol::UDP) {
+    if (!isTcp) {
         std::cout << "  Out-of-Order Pkts : " << result.outOfOrderPackets << "\n";
     }
     if (result.mode == TransferMode::FILEXFER) {
@@ -103,6 +105,10 @@ void displayResult(const ExperimentResult& result) {
                   << (result.fileIntegrityPass ? "PASS" : "FAIL") << "\n";
     }
     std::cout << "  Timestamp         : " << result.timestamp << "\n";
+    std::cout << "----------------------------------------------------------\n";
+    std::cout << "  * Note: Latency is an observed application-level estimate\n";
+    std::cout << "    (not physical network propagation delay). Real wire-level\n";
+    std::cout << "    segments and datagrams can be inspected via Wireshark.\n";
     std::cout << "==========================================================\n\n";
 }
 
@@ -116,14 +122,14 @@ void displayComparison(const ExperimentResult& tcp, const ExperimentResult& udp)
     std::cout << "                  TCP vs UDP COMPARISON\n";
     std::cout << "================================================================\n";
     std::cout << std::left << std::setw(24) << "  Metric"
-              << std::right << std::setw(16) << "TCP"
-              << std::setw(16) << "UDP" << "\n";
+              << std::right << std::setw(18) << "TCP (Stream)"
+              << std::setw(18) << "UDP (Datagram)" << "\n";
     std::cout << "----------------------------------------------------------------\n";
 
     auto row = [](const std::string& label, const std::string& t, const std::string& u) {
         std::cout << "  " << std::left << std::setw(22) << label
-                  << std::right << std::setw(16) << t
-                  << std::setw(16) << u << "\n";
+                  << std::right << std::setw(18) << t
+                  << std::setw(18) << u << "\n";
     };
 
     auto fmtBytes = [](int64_t b) -> std::string {
@@ -138,18 +144,18 @@ void displayComparison(const ExperimentResult& tcp, const ExperimentResult& udp)
         return o.str();
     };
 
-    row("Data Size",       fmtBytes(tcp.totalBytes),       fmtBytes(udp.totalBytes));
-    row("Chunk Size",      std::to_string(tcp.chunkSize),  std::to_string(udp.chunkSize));
-    row("Packets Sent",    std::to_string(tcp.packetsSent),std::to_string(udp.packetsSent));
-    row("Packets Received",std::to_string(tcp.packetsReceived), std::to_string(udp.packetsReceived));
-    row("Packets Lost",    std::to_string(tcp.packetsLost),std::to_string(udp.packetsLost));
-    row("Packet Loss %",   fmtDbl(tcp.packetLossPercent,2)+"%", fmtDbl(udp.packetLossPercent,2)+"%");
-    row("Time (sec)",      fmtDbl(tcp.transmissionTimeSec), fmtDbl(udp.transmissionTimeSec));
-    row("Throughput MB/s",  fmtDbl(tcp.throughputMBps,2),   fmtDbl(udp.throughputMBps,2));
-    row("Throughput Mbps",  fmtDbl(tcp.throughputMbps,2),   fmtDbl(udp.throughputMbps,2));
-    row("Avg Latency (ms)", fmtDbl(tcp.averageLatencyMs),   fmtDbl(udp.averageLatencyMs));
-    row("Jitter (ms)",      fmtDbl(tcp.jitterMs),           fmtDbl(udp.jitterMs));
-    row("Out-of-Order",     std::to_string(tcp.outOfOrderPackets), std::to_string(udp.outOfOrderPackets));
+    row("Data Size",          fmtBytes(tcp.totalBytes),            fmtBytes(udp.totalBytes));
+    row("Chunk/Payload Size", std::to_string(tcp.chunkSize) + " B", std::to_string(udp.chunkSize) + " B");
+    row("Logical Chunks/Pkts",std::to_string(tcp.packetsSent),     std::to_string(udp.packetsSent));
+    row("Received Chunks/Pkts",std::to_string(tcp.packetsReceived), std::to_string(udp.packetsReceived));
+    row("Lost Chunks/Pkts",   std::to_string(tcp.packetsLost),     std::to_string(udp.packetsLost));
+    row("Loss %",             fmtDbl(tcp.packetLossPercent,2)+"%", fmtDbl(udp.packetLossPercent,2)+"%");
+    row("Time (sec)",         fmtDbl(tcp.transmissionTimeSec),     fmtDbl(udp.transmissionTimeSec));
+    row("Throughput MB/s",    fmtDbl(tcp.throughputMBps,2),        fmtDbl(udp.throughputMBps,2));
+    row("Throughput Mbps",    fmtDbl(tcp.throughputMbps,2),        fmtDbl(udp.throughputMbps,2));
+    row("Avg App Latency (ms)",fmtDbl(tcp.averageLatencyMs),       fmtDbl(udp.averageLatencyMs));
+    row("Jitter (ms)",        fmtDbl(tcp.jitterMs),                fmtDbl(udp.jitterMs));
+    row("Out-of-Order",       std::to_string(tcp.outOfOrderPackets), std::to_string(udp.outOfOrderPackets));
 
     if (tcp.mode == TransferMode::FILEXFER || udp.mode == TransferMode::FILEXFER) {
         row("File Integrity",
@@ -157,6 +163,10 @@ void displayComparison(const ExperimentResult& tcp, const ExperimentResult& udp)
             udp.mode == TransferMode::FILEXFER ? (udp.fileIntegrityPass ? "PASS" : "FAIL") : "N/A");
     }
 
+    std::cout << "----------------------------------------------------------------\n";
+    std::cout << "  * Latency reflects observed application-level packet/chunk timing\n";
+    std::cout << "    on localhost, not physical network one-way propagation delay.\n";
+    std::cout << "  * TCP operates as a byte stream; counts represent application chunks.\n";
     std::cout << "================================================================\n\n";
 }
 

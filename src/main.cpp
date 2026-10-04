@@ -32,6 +32,13 @@
 #include <windows.h>
 #include <cstdio>
 
+#if defined(_WIN32)
+extern "C" {
+    FILE* _popen(const char* command, const char* mode);
+    int   _pclose(FILE* stream);
+}
+#endif
+
 // ============================================================
 // Helper: Run a command and capture its stdout
 // ============================================================
@@ -39,7 +46,7 @@
 static std::string runCommandCapture(const std::string& cmd) {
     std::string result;
     // Use _popen to capture stdout from child process
-    FILE* pipe = popen(cmd.c_str(), "r");
+    FILE* pipe = _popen(cmd.c_str(), "r");
     if (!pipe) {
         std::cerr << "[ERROR] Failed to run: " << cmd << "\n";
         return "";
@@ -48,7 +55,7 @@ static std::string runCommandCapture(const std::string& cmd) {
     while (fgets(buf, sizeof(buf), pipe)) {
         result += buf;
     }
-    pclose(pipe);
+    _pclose(pipe);
     return result;
 }
 
@@ -412,7 +419,7 @@ static int displayMenu() {
     std::cout << "  3. TCP File Transfer\n";
     std::cout << "  4. UDP File Transfer\n";
     std::cout << "  5. TCP vs UDP Comparison      (Synthetic Data)\n";
-    std::cout << "  6. Packet Size Experiment     (Multiple chunk sizes)\n";
+    std::cout << "  6. Chunk / Packet Size Experiment (Multiple chunk sizes)\n";
     std::cout << "  7. Exit\n";
     std::cout << "  --------------------------------------------------------\n";
     std::cout << "  Enter choice: ";
@@ -422,13 +429,13 @@ static int displayMenu() {
 }
 
 // ============================================================
-// Packet Size Experiment (multiple chunk sizes)
+// Chunk / Packet Size Experiment (multiple sizes)
 // ============================================================
 
 static void runPacketSizeExperiment() {
-    std::cout << "\n  ---- Packet Size Experiment ----\n";
-    std::cout << "  This experiment runs both TCP and UDP with multiple chunk sizes\n";
-    std::cout << "  and compares throughput, latency, and loss.\n\n";
+    std::cout << "\n  ---- Chunk / Packet Size Experiment ----\n";
+    std::cout << "  This experiment runs both TCP (logical chunks) and UDP (datagrams)\n";
+    std::cout << "  with multiple payload sizes to compare throughput, latency, and loss.\n\n";
 
     int64_t dataSize = getDataSizeMB();
 
@@ -490,7 +497,7 @@ static void runPacketSizeExperiment() {
     // Display comparison table
     std::cout << "\n";
     std::cout << "  ====================================================================\n";
-    std::cout << "                    PACKET SIZE EXPERIMENT RESULTS\n";
+    std::cout << "               CHUNK / PACKET SIZE EXPERIMENT RESULTS\n";
     std::cout << "  ====================================================================\n";
     std::cout << "  " << std::left
               << std::setw(10) << "ChunkSz"
