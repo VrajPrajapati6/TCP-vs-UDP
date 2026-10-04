@@ -1,32 +1,3 @@
-/*
- * main.cpp - NetPulse Orchestrator & Console Interface
- *
- * This is the user-facing entry point for the project.
- *
- * Architecture:
- *   main.exe provides a clean menu. When the user selects an experiment,
- *   main.exe:
- *     1. Launches the appropriate server (tcp_server.exe or udp_server.exe)
- *        as a background process.
- *     2. Waits briefly for the server to initialize.
- *     3. Launches the client (tcp_client.exe or udp_client.exe) and captures
- *        its stdout to read the RESULT line.
- *     4. Waits for both processes to complete.
- *     5. Reads the server's result file from results/.
- *     6. Combines client + server data to build ExperimentResult.
- *     7. Displays formatted results and saves to CSV.
- *
- *   For the "TCP vs UDP Comparison" option, both experiments run sequentially
- *   and results are shown side-by-side.
- *
- * Compilation:
- *   g++ src/main.cpp src/analyzer/metrics.cpp -o main.exe -lws2_32 -std=c++17
- *
- * Prerequisites:
- *   tcp_server.exe, tcp_client.exe, udp_server.exe, udp_client.exe must be
- *   compiled and present in the project root directory.
- */
-
 #include "../include/common.h"
 #include "analyzer/metrics.h"
 #include <windows.h>
@@ -39,13 +10,8 @@ extern "C" {
 }
 #endif
 
-// ============================================================
-// Helper: Run a command and capture its stdout
-// ============================================================
-
 static std::string runCommandCapture(const std::string& cmd) {
     std::string result;
-    // Use _popen to capture stdout from child process
     FILE* pipe = _popen(cmd.c_str(), "r");
     if (!pipe) {
         std::cerr << "[ERROR] Failed to run: " << cmd << "\n";
@@ -59,10 +25,6 @@ static std::string runCommandCapture(const std::string& cmd) {
     return result;
 }
 
-// ============================================================
-// Helper: Launch a background process (no window capture)
-// ============================================================
-
 static HANDLE launchBackground(const std::string& cmd) {
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
@@ -70,7 +32,6 @@ static HANDLE launchBackground(const std::string& cmd) {
     si.cb = sizeof(si);
     std::memset(&pi, 0, sizeof(pi));
 
-    // Need mutable copy of command string for CreateProcessA
     char cmdBuf[2048];
     strncpy(cmdBuf, cmd.c_str(), sizeof(cmdBuf) - 1);
     cmdBuf[sizeof(cmdBuf) - 1] = '\0';
@@ -85,10 +46,6 @@ static HANDLE launchBackground(const std::string& cmd) {
     return pi.hProcess;
 }
 
-// ============================================================
-// Helper: Wait for process to exit
-// ============================================================
-
 static void waitForProcess(HANDLE hProcess, DWORD timeoutMs = 60000) {
     if (hProcess) {
         WaitForSingleObject(hProcess, timeoutMs);
@@ -96,17 +53,9 @@ static void waitForProcess(HANDLE hProcess, DWORD timeoutMs = 60000) {
     }
 }
 
-// ============================================================
-// Helper: Delete a file if it exists (clean previous results)
-// ============================================================
-
 static void deleteFileIfExists(const std::string& path) {
     std::remove(path.c_str());
 }
-
-// ============================================================
-// Helper: Wait for a result file to appear
-// ============================================================
 
 static bool waitForResultFile(const std::string& path, int maxWaitMs = 15000) {
     int waited = 0;
@@ -122,13 +71,9 @@ static bool waitForResultFile(const std::string& path, int maxWaitMs = 15000) {
     return false;
 }
 
-// ============================================================
-// Helper: Parse RESULT line from client stdout
-// ============================================================
-
 struct ClientResult {
     int packetsSent;
-    int totalPackets;   // For UDP: total including skipped
+    int totalPackets;
     double transmissionTimeSec;
     int64_t totalBytes;
     bool valid;
@@ -142,13 +87,10 @@ static ClientResult parseClientResult(const std::string& output) {
     cr.transmissionTimeSec = 0.0;
     cr.totalBytes = 0;
 
-    // Find line starting with "RESULT|"
     std::istringstream iss(output);
     std::string line;
     while (std::getline(iss, line)) {
         if (line.substr(0, 7) == "RESULT|") {
-            // TCP:  RESULT|packets_sent|time|bytes
-            // UDP:  RESULT|packets_sent|total_packets|time|bytes
             std::string payload = line.substr(7);
             std::istringstream ps(payload);
             std::string tok;
@@ -157,14 +99,12 @@ static ClientResult parseClientResult(const std::string& output) {
                 tokens.push_back(tok);
             }
             if (tokens.size() == 3) {
-                // TCP format
                 cr.packetsSent = std::atoi(tokens[0].c_str());
                 cr.totalPackets = cr.packetsSent;
                 cr.transmissionTimeSec = std::atof(tokens[1].c_str());
                 cr.totalBytes = std::atoll(tokens[2].c_str());
                 cr.valid = true;
             } else if (tokens.size() >= 4) {
-                // UDP format
                 cr.packetsSent = std::atoi(tokens[0].c_str());
                 cr.totalPackets = std::atoi(tokens[1].c_str());
                 cr.transmissionTimeSec = std::atof(tokens[2].c_str());
@@ -176,10 +116,6 @@ static ClientResult parseClientResult(const std::string& output) {
     }
     return cr;
 }
-
-// ============================================================
-// Get user input helpers
-// ============================================================
 
 static int64_t getDataSizeMB() {
     double mb;
@@ -229,10 +165,6 @@ static int getDelayMs() {
     return d;
 }
 
-// ============================================================
-// Run a TCP experiment
-// ============================================================
-
 static ExperimentResult runTcpExperiment(TransferMode mode) {
     std::cout << "\n  ---- TCP Experiment Configuration ----\n";
 
@@ -246,16 +178,13 @@ static ExperimentResult runTcpExperiment(TransferMode mode) {
     } else {
         filePath = getFilePath();
         chunkSize = getChunkSize();
-        // dataSize will be auto-detected by client from file
         dataSize = 0;
     }
 
     std::cout << "\n  Starting TCP experiment...\n";
 
-    // Clean previous result
     deleteFileIfExists(TCP_SERVER_RESULT_FILE);
 
-    // Launch TCP server in background
     HANDLE hServer = launchBackground("tcp_server.exe");
     if (!hServer) {
         std::cerr << "  [ERROR] Could not start tcp_server.exe\n";
@@ -263,9 +192,8 @@ static ExperimentResult runTcpExperiment(TransferMode mode) {
         std::memset(&empty, 0, sizeof(empty));
         return empty;
     }
-    Sleep(500); // Let server bind and listen
+    Sleep(500);
 
-    // Build client command
     std::ostringstream clientCmd;
     clientCmd << "tcp_client.exe "
               << (mode == TransferMode::FILEXFER ? "FILE" : "SYNTHETIC")
@@ -275,11 +203,9 @@ static ExperimentResult runTcpExperiment(TransferMode mode) {
         clientCmd << " " << filePath;
     }
 
-    // Run client and capture stdout
     std::string clientOutput = runCommandCapture(clientCmd.str());
     ClientResult cr = parseClientResult(clientOutput);
 
-    // Wait for server to finish
     waitForProcess(hServer, 30000);
 
     if (!cr.valid) {
@@ -289,16 +215,13 @@ static ExperimentResult runTcpExperiment(TransferMode mode) {
         return empty;
     }
 
-    // Wait for server result file
     if (!waitForResultFile(TCP_SERVER_RESULT_FILE)) {
         std::cerr << "  [WARN] Server result file not found. Using client-only data.\n";
     }
 
-    // Read server results
     std::vector<std::pair<std::string, std::string>> serverKV;
     readResultFile(TCP_SERVER_RESULT_FILE, serverKV);
 
-    // Build combined result
     ExperimentResult result = buildResultFromKV(
         serverKV, Protocol::TCP, mode,
         cr.totalBytes, chunkSize, cr.packetsSent,
@@ -307,10 +230,6 @@ static ExperimentResult runTcpExperiment(TransferMode mode) {
 
     return result;
 }
-
-// ============================================================
-// Run a UDP experiment
-// ============================================================
 
 static ExperimentResult runUdpExperiment(TransferMode mode) {
     std::cout << "\n  ---- UDP Experiment Configuration ----\n";
@@ -335,10 +254,8 @@ static ExperimentResult runUdpExperiment(TransferMode mode) {
 
     std::cout << "\n  Starting UDP experiment...\n";
 
-    // Clean previous result
     deleteFileIfExists(UDP_SERVER_RESULT_FILE);
 
-    // Launch UDP server in background
     HANDLE hServer = launchBackground("udp_server.exe");
     if (!hServer) {
         std::cerr << "  [ERROR] Could not start udp_server.exe\n";
@@ -346,9 +263,8 @@ static ExperimentResult runUdpExperiment(TransferMode mode) {
         std::memset(&empty, 0, sizeof(empty));
         return empty;
     }
-    Sleep(500); // Let server bind
+    Sleep(500);
 
-    // Build client command
     std::ostringstream clientCmd;
     clientCmd << "udp_client.exe "
               << (mode == TransferMode::FILEXFER ? "FILE" : "SYNTHETIC")
@@ -360,11 +276,9 @@ static ExperimentResult runUdpExperiment(TransferMode mode) {
         clientCmd << " " << filePath;
     }
 
-    // Run client and capture stdout
     std::string clientOutput = runCommandCapture(clientCmd.str());
     ClientResult cr = parseClientResult(clientOutput);
 
-    // Wait for server to finish
     waitForProcess(hServer, 30000);
 
     if (!cr.valid) {
@@ -374,16 +288,13 @@ static ExperimentResult runUdpExperiment(TransferMode mode) {
         return empty;
     }
 
-    // Wait for server result file
     if (!waitForResultFile(UDP_SERVER_RESULT_FILE)) {
         std::cerr << "  [WARN] Server result file not found. Using client-only data.\n";
     }
 
-    // Read server results
     std::vector<std::pair<std::string, std::string>> serverKV;
     readResultFile(UDP_SERVER_RESULT_FILE, serverKV);
 
-    // Build combined result - for UDP, totalPackets is the full count (including skipped)
     ExperimentResult result = buildResultFromKV(
         serverKV, Protocol::UDP, mode,
         cr.totalBytes, chunkSize, cr.totalPackets,
@@ -392,10 +303,6 @@ static ExperimentResult runUdpExperiment(TransferMode mode) {
 
     return result;
 }
-
-// ============================================================
-// Display Banner
-// ============================================================
 
 static void displayBanner() {
     std::cout << "\n";
@@ -407,10 +314,6 @@ static void displayBanner() {
     std::cout << "  behavior through real socket communication on Windows (Winsock2).\n";
     std::cout << "  ================================================================\n\n";
 }
-
-// ============================================================
-// Display Menu
-// ============================================================
 
 static int displayMenu() {
     std::cout << "  --------------------------------------------------------\n";
@@ -427,10 +330,6 @@ static int displayMenu() {
     std::cin >> choice;
     return choice;
 }
-
-// ============================================================
-// Chunk / Packet Size Experiment (multiple sizes)
-// ============================================================
 
 static void runPacketSizeExperiment() {
     std::cout << "\n  ---- Chunk / Packet Size Experiment ----\n";
@@ -449,7 +348,6 @@ static void runPacketSizeExperiment() {
         int cs = sizes[i];
         std::cout << "\n  === Chunk size: " << cs << " bytes ===\n";
 
-        // TCP
         {
             std::cout << "  [TCP] Running...\n";
             deleteFileIfExists(TCP_SERVER_RESULT_FILE);
@@ -471,7 +369,6 @@ static void runPacketSizeExperiment() {
             }
         }
 
-        // UDP (no simulated loss for comparison fairness)
         {
             std::cout << "  [UDP] Running...\n";
             deleteFileIfExists(UDP_SERVER_RESULT_FILE);
@@ -494,7 +391,6 @@ static void runPacketSizeExperiment() {
         }
     }
 
-    // Display comparison table
     std::cout << "\n";
     std::cout << "  ====================================================================\n";
     std::cout << "               CHUNK / PACKET SIZE EXPERIMENT RESULTS\n";
@@ -522,17 +418,11 @@ static void runPacketSizeExperiment() {
     }
     std::cout << "  ====================================================================\n";
 
-    // Save all to CSV
     for (auto& r : tcpResults) saveResultCSV("results/tcp_results.csv", r);
     for (auto& r : udpResults) saveResultCSV("results/udp_results.csv", r);
 }
 
-// ============================================================
-// Main
-// ============================================================
-
 int main() {
-    // Ensure results directory exists
     CreateDirectoryA("results", NULL);
     CreateDirectoryA("test_files", NULL);
     CreateDirectoryA("wireshark", NULL);
@@ -545,7 +435,6 @@ int main() {
 
         switch (choice) {
         case 1: {
-            // TCP Performance Test (Synthetic)
             ExperimentResult r = runTcpExperiment(TransferMode::SYNTHETIC);
             if (r.totalBytes > 0) {
                 displayResult(r);
@@ -554,7 +443,6 @@ int main() {
             break;
         }
         case 2: {
-            // UDP Performance Test (Synthetic)
             ExperimentResult r = runUdpExperiment(TransferMode::SYNTHETIC);
             if (r.totalBytes > 0) {
                 displayResult(r);
@@ -563,7 +451,6 @@ int main() {
             break;
         }
         case 3: {
-            // TCP File Transfer
             ExperimentResult r = runTcpExperiment(TransferMode::FILEXFER);
             if (r.totalBytes > 0) {
                 displayResult(r);
@@ -572,7 +459,6 @@ int main() {
             break;
         }
         case 4: {
-            // UDP File Transfer
             ExperimentResult r = runUdpExperiment(TransferMode::FILEXFER);
             if (r.totalBytes > 0) {
                 displayResult(r);
@@ -581,7 +467,6 @@ int main() {
             break;
         }
         case 5: {
-            // TCP vs UDP Comparison
             std::cout << "\n  === TCP vs UDP Comparison ===\n";
             std::cout << "  Both experiments will use the same parameters.\n\n";
 
@@ -590,7 +475,6 @@ int main() {
             double lossRate = getLossRate();
             int delayMs = getDelayMs();
 
-            // Run TCP
             std::cout << "\n  --- Running TCP experiment ---\n";
             deleteFileIfExists(TCP_SERVER_RESULT_FILE);
             HANDLE hTcpServer = launchBackground("tcp_server.exe");
@@ -614,7 +498,6 @@ int main() {
                         cr.transmissionTimeSec, "");
                 }
 
-                // Run UDP
                 std::cout << "\n  --- Running UDP experiment ---\n";
                 deleteFileIfExists(UDP_SERVER_RESULT_FILE);
                 HANDLE hUdpServer = launchBackground("udp_server.exe");
@@ -640,13 +523,11 @@ int main() {
                             ucr.transmissionTimeSec, "");
                     }
 
-                    // Display comparison
                     if (cr.valid && ucr.valid) {
                         displayComparison(tcpResult, udpResult);
                         saveResultCSV("results/tcp_results.csv", tcpResult);
                         saveResultCSV("results/udp_results.csv", udpResult);
 
-                        // Also save comparison CSV
                         std::ofstream comp("results/comparison.csv");
                         if (comp.is_open()) {
                             comp << "metric,TCP,UDP\n";
@@ -682,7 +563,6 @@ int main() {
             break;
         }
         case 6: {
-            // Packet Size Experiment
             runPacketSizeExperiment();
             break;
         }

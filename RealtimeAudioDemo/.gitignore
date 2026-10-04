@@ -1,0 +1,7 @@
+*.exe
+*.o
+*.obj
+*.pcapng
+*.pcap
+results/*
+!results/.gitkeep

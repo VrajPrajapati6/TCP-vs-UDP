@@ -1,15 +1,6 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-/*
- * common.h - Shared definitions for NetPulse: TCP vs UDP Performance Analyzer
- *
- * This header defines the constants, enumerations, packet structures,
- * configuration, and result types used by every module in the project.
- * All components include this file to guarantee consistency of ports,
- * sizes, and protocol definitions.
- */
-
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <cstdint>
@@ -28,50 +19,29 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-// ============================================================
-// Network Constants
-// ============================================================
+static const int TCP_PORT       = 5000;
+static const int UDP_PORT       = 5001;
+static const char* SERVER_IP    = "127.0.0.1";
+static const int BACKLOG        = 1;
+static const int SOCKET_TIMEOUT = 10000;
 
-static const int TCP_PORT       = 5000;   // TCP server listens here
-static const int UDP_PORT       = 5001;   // UDP server listens here
-static const char* SERVER_IP    = "127.0.0.1";  // Localhost for academic testing
-static const int BACKLOG        = 1;      // TCP listen backlog (one client)
-static const int SOCKET_TIMEOUT = 10000;  // Socket timeout in milliseconds
+static const int DEFAULT_CHUNK_SIZE   = 4096;
+static const int MAX_UDP_PAYLOAD      = 60000;
+static const int MIN_CHUNK_SIZE       = 64;
+static const int MAX_CHUNK_SIZE       = 65000;
+static const int HEADER_DELIMITER_LEN = 4;
+static const int RESULT_FILE_WAIT_MS  = 500;
 
-// ============================================================
-// Transfer Constants
-// ============================================================
-
-static const int DEFAULT_CHUNK_SIZE   = 4096;       // 4 KB default chunk
-static const int MAX_UDP_PAYLOAD      = 60000;       // Safe UDP payload limit
-static const int MIN_CHUNK_SIZE       = 64;          // Minimum chunk size
-static const int MAX_CHUNK_SIZE       = 65000;       // Maximum chunk size
-static const int HEADER_DELIMITER_LEN = 4;           // "\r\n\r\n"
-static const int RESULT_FILE_WAIT_MS  = 500;         // Wait for result file
-
-// ============================================================
-// Enumerations
-// ============================================================
-
-// Protocol type
 enum class Protocol {
     TCP,
     UDP
 };
 
-// Transfer mode
 enum class TransferMode {
-    SYNTHETIC,  // Generate random data of specified size
-    FILEXFER    // Transfer an actual file from disk
+    SYNTHETIC,
+    FILEXFER
 };
 
-/*
- * PacketType - Used in UDP application-level packet headers.
- * START  : First packet, carries experiment metadata.
- * DATA   : Regular data-bearing packet.
- * END    : Final packet, signals transfer completion.
- * ACK    : Acknowledgement from server to client.
- */
 enum class PacketType : uint8_t {
     START = 0,
     DATA  = 1,
@@ -79,44 +49,17 @@ enum class PacketType : uint8_t {
     ACK   = 3
 };
 
-// ============================================================
-// UDP Application-Level Packet Header
-// ============================================================
-/*
- * Wire format (packed, 24 bytes total):
- *
- * +-------------------+  offset 0   (4 bytes)
- * | sequenceNumber    |
- * +-------------------+  offset 4   (4 bytes)
- * | payloadSize       |
- * +-------------------+  offset 8   (8 bytes)
- * | timestampUs       |  microseconds since epoch
- * +-------------------+  offset 16  (1 byte)
- * | packetType        |
- * +-------------------+  offset 17  (4 bytes)
- * | totalPackets      |  (set in START/END)
- * +-------------------+  offset 21  (3 bytes padding to 24)
- * | reserved          |
- * +-------------------+
- *
- * Followed by `payloadSize` bytes of payload data.
- *
- * We serialize/deserialize explicitly to avoid struct padding issues
- * across compilers.
- */
-
 static const int UDP_HEADER_SIZE = 24;
 
 struct UdpPacketHeader {
     uint32_t sequenceNumber;
     uint32_t payloadSize;
-    int64_t  timestampUs;       // Microseconds since epoch (clock_gettime equivalent)
-    uint8_t  packetType;        // PacketType cast to uint8_t
-    uint32_t totalPackets;      // Total packets in transfer (for loss calculation)
-    uint8_t  reserved[3];       // Padding to 24 bytes
+    int64_t  timestampUs;
+    uint8_t  packetType;
+    uint32_t totalPackets;
+    uint8_t  reserved[3];
 };
 
-// Serialize header into buffer (exactly UDP_HEADER_SIZE bytes)
 inline void serializeUdpHeader(const UdpPacketHeader& hdr, char* buf) {
     std::memcpy(buf + 0,  &hdr.sequenceNumber, 4);
     std::memcpy(buf + 4,  &hdr.payloadSize,    4);
@@ -126,7 +69,6 @@ inline void serializeUdpHeader(const UdpPacketHeader& hdr, char* buf) {
     std::memset(buf + 21, 0, 3);
 }
 
-// Deserialize header from buffer
 inline void deserializeUdpHeader(const char* buf, UdpPacketHeader& hdr) {
     std::memcpy(&hdr.sequenceNumber, buf + 0,  4);
     std::memcpy(&hdr.payloadSize,    buf + 4,  4);
@@ -136,23 +78,15 @@ inline void deserializeUdpHeader(const char* buf, UdpPacketHeader& hdr) {
     std::memset(hdr.reserved, 0, 3);
 }
 
-// ============================================================
-// Experiment Configuration
-// ============================================================
-
 struct ExperimentConfig {
     Protocol     protocol;
     TransferMode mode;
-    int64_t      dataSize;          // Total bytes to transfer
-    int          chunkSize;         // Bytes per chunk/packet
-    std::string  filePath;          // File path (FILEXFER mode)
-    double       packetLossRate;    // 0.0 - 1.0, simulated loss for UDP
-    int          artificialDelayMs; // Simulated per-packet delay (ms)
+    int64_t      dataSize;
+    int          chunkSize;
+    std::string  filePath;
+    double       packetLossRate;
+    int          artificialDelayMs;
 };
-
-// ============================================================
-// Experiment Results
-// ============================================================
 
 struct ExperimentResult {
     Protocol protocol;
@@ -164,19 +98,15 @@ struct ExperimentResult {
     int      packetsLost;
     double   packetLossPercent;
     double   transmissionTimeSec;
-    double   throughputMBps;       // Megabytes per second
-    double   throughputMbps;       // Megabits per second
+    double   throughputMBps;
+    double   throughputMbps;
     double   averageLatencyMs;
     double   jitterMs;
     int      outOfOrderPackets;
     bool     fileIntegrityPass;
     std::string  filePath;
-    std::string  timestamp;        // Human-readable timestamp
+    std::string  timestamp;
 };
-
-// ============================================================
-// Utility: Get current time in microseconds
-// ============================================================
 
 inline int64_t getCurrentTimestampUs() {
     using namespace std::chrono;
@@ -185,10 +115,6 @@ inline int64_t getCurrentTimestampUs() {
     ).count();
 }
 
-// ============================================================
-// Utility: Get human-readable timestamp string
-// ============================================================
-
 inline std::string getTimestampString() {
     auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
@@ -196,10 +122,6 @@ inline std::string getTimestampString() {
     std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&t));
     return std::string(buf);
 }
-
-// ============================================================
-// Utility: Initialize Winsock
-// ============================================================
 
 inline bool initWinsock() {
     WSADATA wsaData;
@@ -211,22 +133,11 @@ inline bool initWinsock() {
     return true;
 }
 
-// ============================================================
-// Utility: Print Winsock error
-// ============================================================
-
 inline void printWinsockError(const std::string& context) {
     int err = WSAGetLastError();
     std::cerr << "[ERROR] " << context << " failed. WSA Error: " << err << std::endl;
 }
 
-// ============================================================
-// Utility: sendAll - robust TCP send that handles partial sends
-// ============================================================
-/*
- * TCP does not guarantee that send() transmits the full buffer in one call.
- * This helper loops until all bytes are sent or an error occurs.
- */
 inline int sendAll(SOCKET sock, const char* data, int length) {
     int totalSent = 0;
     while (totalSent < length) {
@@ -235,21 +146,13 @@ inline int sendAll(SOCKET sock, const char* data, int length) {
             return SOCKET_ERROR;
         }
         if (sent == 0) {
-            break; // Connection closed
+            break;
         }
         totalSent += sent;
     }
     return totalSent;
 }
 
-// ============================================================
-// Utility: recvExact - robust TCP receive of exactly N bytes
-// ============================================================
-/*
- * TCP is a byte stream; recv() may return fewer bytes than requested.
- * This helper loops until exactly `length` bytes are received or
- * the connection is closed / an error occurs.
- */
 inline int recvExact(SOCKET sock, char* buffer, int length) {
     int totalReceived = 0;
     while (totalReceived < length) {
@@ -258,29 +161,20 @@ inline int recvExact(SOCKET sock, char* buffer, int length) {
             return SOCKET_ERROR;
         }
         if (received == 0) {
-            break; // Connection closed gracefully
+            break;
         }
         totalReceived += received;
     }
     return totalReceived;
 }
 
-// ============================================================
-// Utility: Generate synthetic data buffer
-// ============================================================
-
 inline std::vector<char> generateSyntheticData(int64_t size) {
     std::vector<char> data(size);
-    // Fill with a repeating pattern for verifiability
     for (int64_t i = 0; i < size; i++) {
         data[i] = static_cast<char>('A' + (i % 26));
     }
     return data;
 }
-
-// ============================================================
-// Utility: Read file into vector
-// ============================================================
 
 inline bool readFileToVector(const std::string& path, std::vector<char>& data) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -298,17 +192,12 @@ inline bool readFileToVector(const std::string& path, std::vector<char>& data) {
     return true;
 }
 
-// ============================================================
-// Utility: Compare two files byte-by-byte for integrity check
-// ============================================================
-
 inline bool compareFiles(const std::string& file1, const std::string& file2) {
     std::ifstream f1(file1, std::ios::binary);
     std::ifstream f2(file2, std::ios::binary);
     if (!f1.is_open() || !f2.is_open()) {
         return false;
     }
-    // Compare sizes first
     f1.seekg(0, std::ios::end);
     f2.seekg(0, std::ios::end);
     if (f1.tellg() != f2.tellg()) {
@@ -332,23 +221,6 @@ inline bool compareFiles(const std::string& file1, const std::string& file2) {
     return true;
 }
 
-// ============================================================
-// Protocol for TCP control header
-// ============================================================
-/*
- * Before data transfer begins, the TCP client sends a text header:
- *
- *   MODE|DATA_SIZE|CHUNK_SIZE|FILE_NAME\r\n\r\n
- *
- * MODE       : "SYNTHETIC" or "FILE"
- * DATA_SIZE  : Total bytes to transfer (decimal string)
- * CHUNK_SIZE : Bytes per chunk (decimal string)
- * FILE_NAME  : Original filename (or "NONE" for synthetic)
- *
- * The server reads until it sees "\r\n\r\n", parses the header,
- * then receives exactly DATA_SIZE bytes of payload.
- */
-
 inline std::string buildTcpControlHeader(TransferMode mode, int64_t dataSize,
                                           int chunkSize, const std::string& fileName) {
     std::ostringstream oss;
@@ -363,7 +235,6 @@ inline std::string buildTcpControlHeader(TransferMode mode, int64_t dataSize,
 inline bool parseTcpControlHeader(const std::string& header, TransferMode& mode,
                                    int64_t& dataSize, int& chunkSize,
                                    std::string& fileName) {
-    // Remove trailing \r\n\r\n
     std::string h = header;
     size_t pos = h.find("\r\n\r\n");
     if (pos != std::string::npos) h = h.substr(0, pos);
@@ -385,16 +256,8 @@ inline bool parseTcpControlHeader(const std::string& header, TransferMode& mode,
     return true;
 }
 
-// ============================================================
-// Result file paths (server writes, main reads)
-// ============================================================
-
 static const char* TCP_SERVER_RESULT_FILE = "results/tcp_server_last.txt";
 static const char* UDP_SERVER_RESULT_FILE = "results/udp_server_last.txt";
-
-// ============================================================
-// Utility: Write a key=value result file
-// ============================================================
 
 inline void writeResultFile(const std::string& path,
                              const std::vector<std::pair<std::string, std::string>>& kvs) {
@@ -407,10 +270,6 @@ inline void writeResultFile(const std::string& path,
         out << kv.first << "=" << kv.second << "\n";
     }
 }
-
-// ============================================================
-// Utility: Read a key=value result file
-// ============================================================
 
 inline bool readResultFile(const std::string& path,
                             std::vector<std::pair<std::string, std::string>>& kvs) {
@@ -426,7 +285,6 @@ inline bool readResultFile(const std::string& path,
     return true;
 }
 
-// Utility: Lookup a key in key-value pairs
 inline std::string kvLookup(const std::vector<std::pair<std::string, std::string>>& kvs,
                              const std::string& key, const std::string& def = "") {
     for (auto& kv : kvs) {

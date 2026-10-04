@@ -1,19 +1,4 @@
-/*
- * metrics.cpp - Performance calculation and reporting for NetPulse
- *
- * Implements throughput, packet loss, latency, jitter calculations,
- * formatted console output, CSV export, and result construction.
- *
- * This module is compiled into the main.exe so the orchestrator can
- * display and save results. It can also be compiled into server/client
- * executables if they need local calculations.
- */
-
 #include "metrics.h"
-
-// ============================================================
-// Throughput: Total Data / Time
-// ============================================================
 
 double calculateThroughputMBps(int64_t totalBytes, double timeSec) {
     if (timeSec <= 0.0) return 0.0;
@@ -25,10 +10,6 @@ double calculateThroughputMbps(int64_t totalBytes, double timeSec) {
     return (static_cast<double>(totalBytes) * 8.0 / 1000000.0) / timeSec;
 }
 
-// ============================================================
-// Packet Loss: (Sent - Received) / Sent * 100
-// ============================================================
-
 double calculatePacketLoss(int sent, int received) {
     if (sent <= 0) return 0.0;
     int lost = sent - received;
@@ -36,20 +17,12 @@ double calculatePacketLoss(int sent, int received) {
     return (static_cast<double>(lost) / static_cast<double>(sent)) * 100.0;
 }
 
-// ============================================================
-// Average Latency
-// ============================================================
-
 double calculateAverageLatency(const std::vector<double>& latencies) {
     if (latencies.empty()) return 0.0;
     double sum = 0.0;
     for (double l : latencies) sum += l;
     return sum / static_cast<double>(latencies.size());
 }
-
-// ============================================================
-// Jitter: mean of |D(i) - D(i-1)| for consecutive samples
-// ============================================================
 
 double calculateJitter(const std::vector<double>& latencies) {
     if (latencies.size() < 2) return 0.0;
@@ -59,10 +32,6 @@ double calculateJitter(const std::vector<double>& latencies) {
     }
     return sum / static_cast<double>(latencies.size() - 1);
 }
-
-// ============================================================
-// Display a single experiment result
-// ============================================================
 
 void displayResult(const ExperimentResult& result) {
     bool isTcp = (result.protocol == Protocol::TCP);
@@ -111,10 +80,6 @@ void displayResult(const ExperimentResult& result) {
     std::cout << "    segments and datagrams can be inspected via Wireshark.\n";
     std::cout << "==========================================================\n\n";
 }
-
-// ============================================================
-// Display TCP vs UDP side-by-side comparison
-// ============================================================
 
 void displayComparison(const ExperimentResult& tcp, const ExperimentResult& udp) {
     std::cout << "\n";
@@ -170,10 +135,6 @@ void displayComparison(const ExperimentResult& tcp, const ExperimentResult& udp)
     std::cout << "================================================================\n\n";
 }
 
-// ============================================================
-// Save result to CSV
-// ============================================================
-
 void saveResultCSV(const std::string& csvPath, const ExperimentResult& result) {
     bool fileExists = false;
     {
@@ -187,7 +148,6 @@ void saveResultCSV(const std::string& csvPath, const ExperimentResult& result) {
         return;
     }
 
-    // Write header if new file
     if (!fileExists) {
         out << "timestamp,protocol,mode,data_size_bytes,chunk_size,packets_sent,"
             << "packets_received,packets_lost,packet_loss_pct,transmission_time_sec,"
@@ -223,10 +183,6 @@ void saveResultCSV(const std::string& csvPath, const ExperimentResult& result) {
     std::cout << "  [INFO] Result saved to " << csvPath << "\n";
 }
 
-// ============================================================
-// Build ExperimentResult from server key-value file + client data
-// ============================================================
-
 ExperimentResult buildResultFromKV(
     const std::vector<std::pair<std::string, std::string>>& serverKV,
     Protocol proto,
@@ -246,7 +202,6 @@ ExperimentResult buildResultFromKV(
     r.filePath           = originalFilePath;
     r.timestamp          = getTimestampString();
 
-    // Read server-reported values
     r.packetsReceived    = std::atoi(kvLookup(serverKV, "packets_received", "0").c_str());
     r.outOfOrderPackets  = std::atoi(kvLookup(serverKV, "out_of_order", "0").c_str());
 
@@ -256,17 +211,14 @@ ExperimentResult buildResultFromKV(
     std::string jit      = kvLookup(serverKV, "jitter_ms", "0.0");
     r.jitterMs           = std::atof(jit.c_str());
 
-    // Use client-measured transmission time (more accurate for throughput)
     r.transmissionTimeSec = clientTransmissionTimeSec;
 
-    // Compute derived metrics
     r.packetsLost        = r.packetsSent - r.packetsReceived;
     if (r.packetsLost < 0) r.packetsLost = 0;
     r.packetLossPercent  = calculatePacketLoss(r.packetsSent, r.packetsReceived);
     r.throughputMBps     = calculateThroughputMBps(totalBytes, r.transmissionTimeSec);
     r.throughputMbps     = calculateThroughputMbps(totalBytes, r.transmissionTimeSec);
 
-    // File integrity check
     r.fileIntegrityPass  = false;
     if (mode == TransferMode::FILEXFER && !originalFilePath.empty()) {
         std::string receivedPath = kvLookup(serverKV, "received_file", "");

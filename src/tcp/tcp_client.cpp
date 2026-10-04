@@ -1,29 +1,3 @@
-/*
- * tcp_client.cpp - NetPulse TCP Client
- *
- * This client:
- *  1. Initializes Winsock and connects to the TCP server on TCP_PORT.
- *  2. Sends a control header describing the transfer (mode, size, chunk size).
- *  3. Generates synthetic data OR reads a file, then sends it in chunks
- *     using sendAll() to handle partial send() calls.
- *  4. Measures total transmission time.
- *  5. Reports packets sent and timing to stdout (read by main.exe).
- *
- * Compilation:
- *   g++ src/tcp/tcp_client.cpp -o tcp_client.exe -lws2_32 -std=c++17
- *
- * Usage:
- *   tcp_client.exe <mode> <data_size> <chunk_size> [file_path]
- *
- *   mode       : SYNTHETIC or FILE
- *   data_size  : total bytes (ignored for FILE mode, auto-detected)
- *   chunk_size : bytes per send chunk
- *   file_path  : path to file (FILE mode only)
- *
- * Output (to stdout, parsed by main.exe):
- *   RESULT|packets_sent|transmission_time_sec|total_bytes
- */
-
 #include "../../include/common.h"
 
 static void printUsage() {
@@ -31,7 +5,6 @@ static void printUsage() {
 }
 
 int main(int argc, char* argv[]) {
-    // ---- Parse Arguments ----
     if (argc < 4) {
         printUsage();
         return 1;
@@ -52,7 +25,6 @@ int main(int argc, char* argv[]) {
     if (chunkSize < MIN_CHUNK_SIZE) chunkSize = MIN_CHUNK_SIZE;
     if (chunkSize > MAX_CHUNK_SIZE) chunkSize = MAX_CHUNK_SIZE;
 
-    // ---- Prepare Data ----
     std::vector<char> data;
     if (mode == TransferMode::FILEXFER) {
         if (filePath.empty()) {
@@ -71,17 +43,14 @@ int main(int argc, char* argv[]) {
         data = generateSyntheticData(dataSize);
     }
 
-    // Extract just the filename for the header
     std::string fileName = "NONE";
     if (mode == TransferMode::FILEXFER) {
         size_t pos = filePath.find_last_of("/\\");
         fileName = (pos != std::string::npos) ? filePath.substr(pos + 1) : filePath;
     }
 
-    // ---- Winsock Init ----
     if (!initWinsock()) return 1;
 
-    // ---- Create TCP Socket ----
     SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock == INVALID_SOCKET) {
         printWinsockError("socket()");
@@ -89,7 +58,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // ---- Connect to Server ----
     sockaddr_in serverAddr;
     std::memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
@@ -108,7 +76,6 @@ int main(int argc, char* argv[]) {
 
     std::cerr << "[TCP Client] Connected.\n";
 
-    // ---- Send Control Header ----
     std::string header = buildTcpControlHeader(mode, dataSize, chunkSize, fileName);
     if (sendAll(sock, header.c_str(), static_cast<int>(header.size())) == SOCKET_ERROR) {
         printWinsockError("sendAll(header)");
@@ -117,14 +84,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // ---- Send Data in Chunks ----
-    /*
-     * We divide the data into chunks and call sendAll() for each.
-     * sendAll() handles partial send() returns, ensuring all bytes
-     * of a chunk are transmitted before moving on.
-     *
-     * packetsSent counts the number of complete chunks transmitted.
-     */
     int packetsSent = 0;
     int64_t bytesSent = 0;
 
@@ -154,15 +113,11 @@ int main(int argc, char* argv[]) {
     std::cerr << "[TCP Client] Transmission time: " << std::fixed
               << std::setprecision(4) << transmissionTimeSec << " sec\n";
 
-    // ---- Output result line to stdout (parsed by main.exe) ----
     std::cout << "RESULT|" << packetsSent << "|"
               << std::fixed << std::setprecision(6) << transmissionTimeSec << "|"
               << bytesSent << std::endl;
 
-    // ---- Cleanup ----
-    // Graceful shutdown: signal end of transmission
     shutdown(sock, SD_SEND);
-    // Brief wait for server to finish receiving
     Sleep(200);
 
     closesocket(sock);
