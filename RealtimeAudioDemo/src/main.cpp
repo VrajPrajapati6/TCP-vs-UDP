@@ -23,9 +23,10 @@ void printMenu() {
     std::cout << "  3. UDP Audio Streaming with  5% Loss (Subtle clicks/gaps)\n";
     std::cout << "  4. UDP Audio Streaming with 10% Loss (Noticeable dropouts)\n";
     std::cout << "  5. UDP Audio Streaming with 20% Loss (Heavy stutter/loss)\n";
-    std::cout << "  6. TCP vs UDP Comprehensive Comparison Table\n";
-    std::cout << "  7. Exit\n";
-    std::cout << "\nEnter Choice [1-7]: ";
+    std::cout << "  6. TCP Audio with Network Delay / Jitter (Head-of-Line Stalling Demo)\n";
+    std::cout << "  7. TCP vs UDP Comprehensive Comparison Table\n";
+    std::cout << "  8. Exit\n";
+    std::cout << "\nEnter Choice [1-8]: ";
 }
 
 bool launchProcess(const std::string& cmd, PROCESS_INFORMATION& pi, bool newConsole = false) {
@@ -146,12 +147,16 @@ int main() {
                     "udp_audio_client.exe audio/network_demo.wav 0.20 127.0.0.1 6001",
                     "UDP Audio Streaming (20% Packet Loss)");
         } else if (choice == 6) {
-            printComparisonTable();
+            runDemo("tcp_audio_server.exe",
+                    "tcp_audio_client.exe audio/network_demo.wav 127.0.0.1 6000 250",
+                    "TCP Audio with Network Delay (250ms stalls - Head-of-Line Blocking)");
         } else if (choice == 7) {
+            printComparisonTable();
+        } else if (choice == 8) {
             std::cout << "\nExiting Real-Time Audio Demo. Goodbye!\n";
             break;
         } else {
-            std::cout << "\nInvalid choice. Please select 1 through 7.\n";
+            std::cout << "\nInvalid choice. Please select 1 through 8.\n";
         }
     }
 

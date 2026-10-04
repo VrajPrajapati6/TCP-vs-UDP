@@ -99,6 +99,9 @@ int main(int argc, char* argv[]) {
 
     auto streamStart = std::chrono::high_resolution_clock::now();
 
+    // Request 1ms timer resolution from Windows multimedia timer system
+    timeBeginPeriod(1);
+
     while (!reader.isEof()) {
         auto frameStart = std::chrono::high_resolution_clock::now();
 
@@ -136,6 +139,8 @@ int main(int argc, char* argv[]) {
             Sleep(static_cast<DWORD>(sleepNeeded));
         }
     }
+
+    timeEndPeriod(1);
 
     uint32_t endMarker = 0;
     sendAll(sock, reinterpret_cast<const char*>(&endMarker), 4);
