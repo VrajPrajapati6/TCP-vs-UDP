@@ -114,15 +114,32 @@ void printComparisonTable() {
 }
 
 int main() {
-    printHeader();
-
     while (true) {
+        printHeader();
         printMenu();
+
+        std::string inputLine;
+        if (!std::getline(std::cin, inputLine)) {
+            break;
+        }
+
+        // Trim leading and trailing whitespace
+        size_t first = inputLine.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) {
+            // User just pressed Enter without a number; continue cleanly without duplicating
+            continue;
+        }
+        size_t last = inputLine.find_last_not_of(" \t\r\n");
+        inputLine = inputLine.substr(first, (last - first + 1));
+
         int choice = 0;
-        if (!(std::cin >> choice)) {
-            std::cin.clear();
-            std::string dummy;
-            std::cin >> dummy;
+        try {
+            choice = std::stoi(inputLine);
+        } catch (...) {
+            std::cout << "\n[!] Invalid input: '" << inputLine << "'. Please enter a number between 1 and 8.\n";
+            std::cout << "Press Enter to return to menu...";
+            std::string pause;
+            std::getline(std::cin, pause);
             continue;
         }
 
